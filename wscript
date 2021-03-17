@@ -48,6 +48,9 @@ def options(ctx):
     ctx.add_option('--debug', action = 'store_const',
             dest = 'build_type', const = 'debug',
             help = 'build in debug mode (see --build-type)')
+    ctx.add_option('--nodeps', action = 'store_const',
+            dest = 'nodeps', const = 'debug',
+            help = 'build with no external dependencies')
     add_option_enable_disable(ctx, 'fftw3f', default = False,
             help_str = 'compile with fftw3f instead of ooura (recommended)',
             help_disable_str = 'do not compile with fftw3f')
@@ -69,9 +72,18 @@ def options(ctx):
     add_option_enable_disable(ctx, 'avcodec', default = None,
             help_str = 'compile with libavcodec (auto)',
             help_disable_str = 'disable libavcodec')
+    add_option_enable_disable(ctx, 'vorbis', default = None,
+            help_str = 'compile with libvorbis (auto)',
+            help_disable_str = 'disable libvorbis')
+    add_option_enable_disable(ctx, 'flac', default = None,
+            help_str = 'compile with libFLAC (auto)',
+            help_disable_str = 'disable libflac')
     add_option_enable_disable(ctx, 'samplerate', default = None,
             help_str = 'compile with samplerate (auto)',
             help_disable_str = 'disable samplerate')
+    add_option_enable_disable(ctx, 'rubberband', default = None,
+            help_str = 'compile with rubberband (auto)',
+            help_disable_str = 'disable rubberband')
     add_option_enable_disable(ctx, 'memcpy', default = True,
             help_str = 'use memcpy hacks (default)',
             help_disable_str = 'do not use memcpy hacks')
@@ -125,6 +137,30 @@ def configure(ctx):
     target_platform = sys.platform
     if ctx.options.target_platform:
         target_platform = ctx.options.target_platform
+
+    if ctx.options.nodeps:
+        external_deps = [
+                'sndfile',
+                'samplerate',
+                'jack',
+                'rubberband',
+                'avcodec',
+                'blas',
+                'fftw3',
+                'fftw3f',
+                'flac',
+                'vorbis',
+        ]
+        for d in external_deps:
+            if not hasattr(ctx.options, 'enable_' + d):
+                raise ctx.errors.ConfigurationError ('--enable-%s missing from options' % d)
+            if getattr(ctx.options, 'enable_' + d) == True:
+                msg = 'Option --nodeps can not be used along with --enable-%s' % d
+                raise ctx.errors.ConfigurationError (msg)
+            elif getattr(ctx.options, 'enable_' + d) is None:
+                msg = 'Option --nodeps used but automatic detection with --enable-%s' % d
+                ctx.msg('Warning', msg)
+            setattr(ctx.options, 'enable_' + d, False)
 
     from waflib import Options
 
@@ -384,6 +420,12 @@ def configure(ctx):
                 args = '--cflags --libs samplerate >= 0.0.15',
                 mandatory = ctx.options.enable_samplerate)
 
+    # check for librubberband
+    if (ctx.options.enable_rubberband != False):
+        ctx.check_cfg(package = 'rubberband', atleast_version = '1.3',
+                args = '--cflags --libs',
+                mandatory = ctx.options.enable_rubberband)
+
     # check for jack
     if (ctx.options.enable_jack != False):
         ctx.check_cfg(package = 'jack',
@@ -432,6 +474,20 @@ def configure(ctx):
             elif 'HAVE_AVRESAMPLE' in ctx.env:
                 ctx.define('HAVE_AVRESAMPLE', 1)
             ctx.define('HAVE_LIBAV', 1)
+
+    # check for vorbisenc
+    if (ctx.options.enable_vorbis != False):
+        ctx.check_cfg(package = 'vorbisenc vorbis ogg',
+                args = '--cflags --libs',
+                uselib_store = 'VORBISENC',
+                mandatory = ctx.options.enable_vorbis)
+
+    # check for flac
+    if (ctx.options.enable_flac != False):
+        ctx.check_cfg(package = 'flac',
+                args = '--cflags --libs',
+                uselib_store = 'FLAC',
+                mandatory = ctx.options.enable_flac)
 
     if (ctx.options.enable_wavread != False):
         ctx.define('HAVE_WAVREAD', 1)
